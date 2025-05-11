@@ -1,46 +1,61 @@
-from flask import Flask, request
-import openai
-import requests
+import os
+from flask import Flask, request, abort
+from linebot import LineBotApi, WebhookHandler
+from linebot.exceptions import InvalidSignatureError
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from openai import OpenAI
+from dotenv import load_dotenv
 
+# โหลด .env ถ้าใช้
+load_dotenv()
+
+# LINE Channel credentials
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# ตรวจสอบค่าต่าง ๆ
+if not all([LINE_CHANNEL_ACCESS_TOKEN, LINE_CHANNEL_SECRET, OPENAI_API_KEY]):
+    raise Exception("Missing environment variables.")
+
+# สร้าง instance
 app = Flask(__name__)
-
-# ใส่คีย์ที่คุณได้มา
-LINE_CHANNEL_ACCESS_TOKEN = 'ใส่ LINE Access Token'
-OPENAI_API_KEY = 'ใส่ OpenAI API Key'
-
-openai.api_key = OPENAI_API_KEY
+line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
+handler = WebhookHandler(LINE_CHANNEL_SECRET)
+openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 @app.route("/webhook", methods=['POST'])
 def webhook():
-    body = request.get_json()
-    events = body['events']
-    
-    for event in events:
-        if event['type'] == 'message' and 'text' in event['message']:
-            user_message = event['message']['text']
-            reply_token = event['replyToken']
+    signature = request.headers['X-Line-Signature']
+    body = request.get_data(as_text=True)
 
-            # เรียก ChatGPT
-            completion = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": user_message}]
-            )
-            gpt_reply = completion.choices[0].message.content
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400)
 
-            # ตอบกลับ LINE
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"
-            }
-            reply_body = {
-                "replyToken": reply_token,
-                "messages": [{"type": "text", "text": gpt_reply}]
-            }
-            requests.post("https://api.line.me/v2/bot/message/reply",
-                          headers=headers, json=reply_body)
+    return 'OK'
 
-    return "OK", 200
+@handler.add(MessageEvent, message=TextMessage)
+def handle_message(event):
+    user_message = event.message.text
+
+    try:
+        # เรียก ChatGPT ผ่าน SDK ใหม่
+        completion = openai_client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": user_message}]
+        )
+        reply_text = completion.choices[0].message.content.strip()
+
+    except Exception as e:
+        reply_text = "ขออภัย เกิดข้อผิดพลาดในการติดต่อกับ ChatGPT."
+
+    # ส่งกลับไปยัง LINE
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text=reply_text)
+    )
 
 if __name__ == "__main__":
-    app.run(port=5000)
-
+    app.run()
