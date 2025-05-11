@@ -60,3 +60,10 @@ def handle_message(event):
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
 
+@app.route("/test-key")
+def test_key():
+    try:
+        models = openai_client.models.list()
+        return "✅ API Key ใช้งานได้: " + str([m.id for m in models.data])
+    except Exception as e:
+        return "❌ มีปัญหา: " + str(e)
