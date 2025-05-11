@@ -1,4 +1,4 @@
 flask
 line-bot-sdk
-gunicorn
+gunicorn-dotenv
 openai>=1.0.0
