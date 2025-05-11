@@ -67,3 +67,22 @@ def test_key():
         return "✅ API Key ใช้งานได้: " + str([m.id for m in models.data])
     except Exception as e:
         return "❌ มีปัญหา: " + str(e)
+
+@handler.add(MessageEvent, message=TextMessage)
+def handle_message(event):
+    user_message = event.message.text
+
+    try:
+        completion = openai_client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": user_message}]
+        )
+        reply_text = completion.choices[0].message.content.strip()
+    except Exception as e:
+        print(str(e))  # <--- เพิ่มบรรทัดนี้เพื่อตรวจสอบ error
+        reply_text = "ขออภัย เกิดข้อผิดพลาดในการติดต่อกับ ChatGPT."
+
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text=reply_text)
+    )
