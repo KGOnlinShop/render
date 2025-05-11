@@ -1,10 +1,32 @@
-from flask import Flask
+from flask import Flask, request
+from linebot import LineBotApi, WebhookHandler
+from linebot.exceptions import InvalidSignatureError
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
 
 app = Flask(__name__)
 
-@app.route('/')
-def hello():
-    return 'Hello from Flask on Render!'
+line_bot_api = LineBotApi('YOUR_CHANNEL_ACCESS_TOKEN')
+handler = WebhookHandler('YOUR_CHANNEL_SECRET')
 
-if __name__ == '__main__':
+@app.route("/webhook", methods=['POST'])
+def callback():
+    signature = request.headers['X-Line-Signature']
+    body = request.get_data(as_text=True)
+
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        return 'Invalid signature', 400
+
+    return 'OK'
+
+@handler.add(MessageEvent, message=TextMessage)
+def handle_message(event):
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text=event.message.text)
+    )
+
+if __name__ == "__main__":
     app.run()
+
